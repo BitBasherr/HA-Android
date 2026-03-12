@@ -12,7 +12,7 @@ concurrency:
 jobs:
   tag:
     name: Prepare next release
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       contents: write # To push to weekly_changelog_bump branch
       pull-requests: write # To be able to create or update PR
