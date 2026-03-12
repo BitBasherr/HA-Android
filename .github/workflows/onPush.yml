@@ -17,7 +17,7 @@ env:
 jobs:
   app_build:
     name: Github, Firebase, and Sentry Release
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       contents: write
     steps:
@@ -130,7 +130,7 @@ jobs:
 
   play_publish:
     name: Play Publish
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     concurrency:
       group: playstore_deploy
     permissions:
