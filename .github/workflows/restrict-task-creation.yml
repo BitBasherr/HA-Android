@@ -9,7 +9,7 @@ jobs:
   check-authorization:
     permissions:
       issues: write
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     # Only run if this is a Task issue type (from the issue form)
     if: github.event.issue.type.name == 'Task'
     steps:
