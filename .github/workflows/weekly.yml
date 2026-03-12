@@ -7,7 +7,7 @@ on: # yamllint disable-line rule:truthy
 jobs:
   tag:
     name: Tag Weekly Release
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       actions: write # Start workflows onPush and prepareNextRelease
       contents: write # Allow pushing tags
