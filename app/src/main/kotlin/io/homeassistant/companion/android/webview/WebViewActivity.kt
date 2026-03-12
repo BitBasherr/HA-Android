@@ -186,6 +186,7 @@ class WebViewActivity :
         }
 
         private const val CONNECTION_DELAY = 10000L
+        private const val MAX_JS_FILE_PICKER_BYTES = 20 * 1024 * 1024
     }
 
     private val ioScope: CoroutineScope = CoroutineScope(Dispatchers.Main + Job())
@@ -236,6 +237,9 @@ class WebViewActivity :
         mFilePathCallback?.onReceiveValue(cachedResult)
         mFilePathCallback = null
     }
+    private val jsFilePicker = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        handleJsFilePickerResult(uris)
+    }
     private val commissionMatterDevice =
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
             presenter.onMatterThreadIntentResult(this, result)
@@ -278,6 +282,7 @@ class WebViewActivity :
     private lateinit var windowInsetsController: WindowInsetsControllerCompat
 
     private var mFilePathCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingJsFilePickerRequestId: String? = null
     private var isConnected = false
     private var isShowingError = false
     private var isRelaunching = false
@@ -1013,6 +1018,16 @@ class WebViewActivity :
                                     filename = filename,
                                 )
                             }
+                        }
+                    }
+
+                    @JavascriptInterface
+                    fun requestFilePicker(requestId: String, mimeType: String) {
+                        val safeId = requestId.replace(Regex("[^a-zA-Z0-9_-]"), "")
+                        if (safeId.isEmpty()) return
+                        runOnUiThread {
+                            pendingJsFilePickerRequestId = safeId
+                            jsFilePicker.launch(mimeType.ifEmpty { "*/*" })
                         }
                     }
                 },
@@ -2229,6 +2244,55 @@ class WebViewActivity :
                 file.delete()
             }
         }
+    }
+
+    private fun handleJsFilePickerResult(uris: List<Uri>) {
+        val requestId = pendingJsFilePickerRequestId ?: return
+        pendingJsFilePickerRequestId = null
+
+        lifecycleScope.launch(Dispatchers.Default) {
+            val filesArray = org.json.JSONArray()
+            for (uri in uris) {
+                try {
+                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes == null || bytes.size > MAX_JS_FILE_PICKER_BYTES) continue
+                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    val type = contentResolver.getType(uri) ?: "application/octet-stream"
+                    val name = getFileDisplayName(uri) ?: "file_${uri.hashCode()}"
+                    filesArray.put(
+                        org.json.JSONObject().apply {
+                            put("name", name)
+                            put("type", type)
+                            put("size", bytes.size)
+                            put("data", base64)
+                        },
+                    )
+                } catch (e: java.io.IOException) {
+                    Timber.e(e, "Failed to read file for JS file picker")
+                } catch (e: SecurityException) {
+                    Timber.e(e, "Permission denied reading file for JS file picker")
+                }
+            }
+
+            val result = org.json.JSONObject().apply {
+                put("requestId", requestId)
+                put("files", filesArray)
+            }
+
+            withContext(Dispatchers.Main) {
+                webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('externalapp-filepicker-result',{detail:$result}));",
+                    null,
+                )
+            }
+        }
+    }
+
+    private fun getFileDisplayName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getString(0)
+        }
+        return uri.lastPathSegment
     }
 
     override fun onNewIntent(intent: Intent) {
