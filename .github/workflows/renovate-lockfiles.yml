@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   update-lockfiles:
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       actions: write # Start workflows pr.yml
       contents: write # To push to the current branch
