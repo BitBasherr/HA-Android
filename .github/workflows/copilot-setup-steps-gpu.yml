@@ -1,0 +1,129 @@
+name: Copilot setup steps
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    name: Copilot setup steps
+    runs-on: arc-haandroid-gpu
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make SSH buffer revert tools executable
+        run: |
+          # VS Code SSH buffer revert detection & safe commit tools
+          for script in scripts/detect-vscode-buffer-revert.sh scripts/safe-git-commit.sh; do
+            if [ -f "$script" ]; then
+              chmod +x "$script"
+              echo "✅ chmod +x $script"
+            fi
+          done
+          if [ -f scripts/safe_edit.py ]; then
+            echo "✅ safe_edit.py available"
+          fi
+
+      - name: Tooling info
+        run: |
+          uname -a
+          id
+          python3 --version || true
+          node --version || true
+          npm --version || true
+
+      - name: Setup Python virtual environment
+        run: |
+          # Install python3-venv package (not included in actions-runner image)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-venv python3-pip 2>/dev/null || true
+          python3 -m venv "${HOME}/.venv"
+          echo "${HOME}/.venv/bin" >> "${GITHUB_PATH}"
+          echo "VIRTUAL_ENV=${HOME}/.venv" >> "${GITHUB_ENV}"
+          "${HOME}/.venv/bin/pip" install --upgrade pip setuptools wheel
+          # Install project dependencies if they exist
+          if [ -f requirements.txt ]; then
+            "${HOME}/.venv/bin/pip" install -r requirements.txt
+          elif [ -f pyproject.toml ]; then
+            "${HOME}/.venv/bin/pip" install -e ".[dev]" 2>/dev/null || \
+              "${HOME}/.venv/bin/pip" install -e . 2>/dev/null || true
+          fi
+          echo "=== Python venv ready ==="
+          "${HOME}/.venv/bin/python3" --version
+          "${HOME}/.venv/bin/pip" --version
+
+      - name: Install Node.js for Playwright MCP
+        run: |
+          # Install Node.js (needed for Copilot's playwright MCP server)
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          echo "Node.js version: $(node --version)"
+          echo "npm version: $(npm --version)"
+
+      - name: Configure MCP servers
+        run: |
+          # GitHub MCP Server
+          mcp_github="${MCP_GITHUB_BIN:-/opt/mcp/bin/github-mcp-server}"
+          if [ ! -x "${mcp_github}" ]; then
+            echo "Missing MCP GitHub server at ${mcp_github}" >&2
+            exit 1
+          fi
+
+          # Home Assistant MCP Server (for SSH and API access)
+          mcp_ha="${MCP_HOMEASSISTANT_BIN:-/opt/mcp/bin/homeassistant-mcp-server}"
+          if [ ! -x "${mcp_ha}" ]; then
+            echo "Warning: Home Assistant MCP server not found at ${mcp_ha}"
+          fi
+
+          # Test SSH connectivity (non-fatal if it fails)
+          if [ -f "${HOME}/.ssh/id_ha" ]; then
+            echo "SSH key found, testing connection to Home Assistant..."
+            ssh -i "${HOME}/.ssh/id_ha" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=5 -p "${HA_SSH_PORT:-14866}" \
+                "${HA_SSH_USER:-root}@${HA_SSH_HOST:-elcafe.us}" "echo 'SSH connection successful'" || \
+                echo "Warning: SSH connection test failed (may still work)"
+          else
+            echo "Note: SSH key not configured for Home Assistant"
+          fi
+
+          # Configure MCP servers for Copilot
+          mkdir -p "${HOME}/.config/mcp"
+          cat > "${HOME}/.config/mcp/servers.json" <<EOF
+          {
+            "mcpServers": {
+              "github": {
+                "command": "${mcp_github}",
+                "args": ["${MCP_GITHUB_ARGS:-stdio}"]
+              },
+              "homeassistant": {
+                "command": "python3",
+                "args": ["${mcp_ha}"],
+                "env": {
+                  "HA_BASE_URL": "${HA_BASE_URL}",
+                  "HA_TOKEN": "${HA_TOKEN}",
+                  "HA_SSH_HOST": "${HA_SSH_HOST:-elcafe.us}",
+                  "HA_SSH_PORT": "${HA_SSH_PORT:-14866}",
+                  "HA_SSH_USER": "${HA_SSH_USER:-root}",
+                  "HA_SSH_KEY_PATH": "${HOME}/.ssh/id_ha"
+                }
+              }
+            }
+          }
+          EOF
+
+          echo "MCP_SERVERS_CONFIG=${HOME}/.config/mcp/servers.json" >> "${GITHUB_ENV}"
+          
+          # Playwright server is already running in sidecar container
+          echo "PLAYWRIGHT_WS_ENDPOINT=${PLAYWRIGHT_WS_ENDPOINT:-ws://localhost:3000/}" >> "${GITHUB_ENV}"
+          
+          echo "=== MCP Servers Configured ==="
+          echo "- GitHub MCP: ${mcp_github}"
+          echo "- Home Assistant MCP: ${mcp_ha}"
+          echo "- Playwright: ${PLAYWRIGHT_WS_ENDPOINT:-ws://localhost:3000/}"
+          echo "- HA API: ${HA_BASE_URL}"
+          echo "- HA SSH: ${HA_SSH_USER:-root}@${HA_SSH_HOST:-elcafe.us}:${HA_SSH_PORT:-14866}"
