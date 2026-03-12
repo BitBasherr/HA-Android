@@ -7,7 +7,7 @@ on: # yamllint disable-line rule:truthy
 jobs:
   tag:
     name: Tag Monthly Release
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       actions: write
       contents: write
