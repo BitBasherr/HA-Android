@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   yamllint:
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -28,7 +28,7 @@ jobs:
         run: yamllint --strict --format github .
 
   lockfiles:
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -59,7 +59,7 @@ jobs:
 
   ktlint:
     needs: [yamllint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       security-events: write
     steps:
@@ -83,7 +83,7 @@ jobs:
 
   lint:
     needs: [lockfiles, ktlint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       security-events: write
     steps:
@@ -114,7 +114,7 @@ jobs:
   screenshot_test:
     name: "Screenshot Tests"
     needs: [lint, lockfiles, ktlint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -135,7 +135,7 @@ jobs:
 
   pr_build:
     needs: [lockfiles, ktlint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -181,7 +181,7 @@ jobs:
 
   pr_build_release:
     needs: [lockfiles, ktlint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -215,7 +215,7 @@ jobs:
   unit_tests:
     name: "Unit Tests"
     needs: [lint, lockfiles, ktlint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -238,7 +238,7 @@ jobs:
   instrumentation_test:
     name: "Instrumentation Tests"
     needs: [lint, lockfiles, ktlint]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     strategy:
       # We want the result of each device to be reported, so we can't fail-fast
       fail-fast: false
@@ -323,7 +323,7 @@ jobs:
   publish_test_results:
     name: "Publish Tests Results"
     needs: [instrumentation_test, unit_tests, screenshot_test]
-    runs-on: ubuntu-latest
+    runs-on: arc-haandroid
     permissions:
       checks: write
       pull-requests: write
