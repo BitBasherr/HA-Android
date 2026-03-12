@@ -369,3 +369,6 @@ playStorePublishServiceCredentialsFile.json
 
 ## Temp results from the CI
 merged_results.sarif
+
+## Local test builds
+Builds/

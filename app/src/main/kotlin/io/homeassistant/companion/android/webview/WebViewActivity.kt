@@ -221,7 +221,19 @@ class WebViewActivity :
         )
     }
     private val showWebFileChooser = registerForActivityResult(ShowWebFileChooser()) { result ->
-        mFilePathCallback?.onReceiveValue(result)
+        if (mFilePathCallback == null) return@registerForActivityResult
+
+        // Cache files locally to fix upload failures in nested iframes / Shadow DOM.
+        // The WebView cannot read content:// URIs in cross-origin contexts, so we copy
+        // the bytes into the app's cacheDir and hand back file:// URIs instead.
+        val cachedResult = if (!result.isNullOrEmpty()) {
+            cleanupStaleUploadCache()
+            result.map { uri -> cacheFileForWebViewUpload(uri) }.toTypedArray()
+        } else {
+            result
+        }
+
+        mFilePathCallback?.onReceiveValue(cachedResult)
         mFilePathCallback = null
     }
     private val commissionMatterDevice =
@@ -2165,6 +2177,58 @@ class WebViewActivity :
         }
         val dialog = ImprovSetupDialog.newInstance(deviceName)
         dialog.show(supportFragmentManager, ImprovSetupDialog.TAG)
+    }
+
+    /**
+     * Copies a content:// URI into the app's cache directory and returns a file:// URI.
+     *
+     * This is needed because WebView's Chromium engine cannot read content:// URIs inside
+     * cross-origin iframes or Shadow DOM elements. By copying bytes into the app-private
+     * cache, the resulting file:// URI is accessible to the WebView regardless of origin nesting.
+     * Falls back to the original URI if the copy fails.
+     */
+    private fun cacheFileForWebViewUpload(uri: Uri): Uri {
+        return try {
+            val extension = contentResolver.getType(uri)
+                ?.substringAfterLast('/')
+                ?: "tmp"
+            val safeFileName = "webview_upload_${System.currentTimeMillis()}_${uri.hashCode()}.$extension"
+            val tempFile = java.io.File(cacheDir, safeFileName)
+
+            contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                Timber.w("Could not open input stream for WebView upload URI")
+                return uri
+            }
+
+            Uri.fromFile(tempFile)
+        } catch (e: java.io.IOException) {
+            Timber.e(e, "Failed to cache file for WebView upload, falling back to original URI")
+            uri
+        } catch (e: SecurityException) {
+            Timber.e(e, "Permission denied caching file for WebView upload, falling back to original URI")
+            uri
+        }
+    }
+
+    /**
+     * Removes stale temporary upload files from previous sessions.
+     *
+     * Files prefixed with "webview_upload_" that are older than 30 minutes are deleted
+     * to prevent cache buildup over time.
+     */
+    private fun cleanupStaleUploadCache() {
+        val expirationMs = 30 * 60 * 1000L
+        cacheDir.listFiles()?.forEach { file ->
+            if (file.name.startsWith("webview_upload_") &&
+                System.currentTimeMillis() - file.lastModified() > expirationMs
+            ) {
+                file.delete()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
